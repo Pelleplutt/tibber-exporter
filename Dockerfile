@@ -7,6 +7,7 @@ COPY requirements.txt /app/
 RUN /usr/local/bin/pip3.7 install -r /app/requirements.txt
 
 COPY tibber-exporter.py /app/
+COPY graphql_client.py /usr/local/lib/python3.7/site-packages/python_graphql_client/graphql_client.py
 
 
 EXPOSE 9109
