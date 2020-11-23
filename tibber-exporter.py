@@ -18,7 +18,75 @@ from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGIS
 PORT = 9110
 SUBSCRIPTION_ENDPOINT = 'wss://api.tibber.com/v1-beta/gql/subscriptions'
 QUERY_ENDPOINT = 'https://api.tibber.com/v1-beta/gql'
-EXIT_REQUEST = 0
+RT_HOMES = {}
+
+class TibberHomeRT(object):
+    def __init__(self, token, id):
+        self.id = id
+        self.token = token
+        self.last_live_measurement = None
+        self.last_live_measurement_update = None
+        self.subscription_client = GraphqlClient(endpoint=SUBSCRIPTION_ENDPOINT)
+        self.subscription_task = None
+
+    def handle_live_measurement(self, data):
+        logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
+        self.last_live_measurement = data['data']['liveMeasurement'].copy()
+        self.last_live_measurement_update = datetime.now()
+
+    def subscribe_live_measurements(self):
+        logging.info('Starting subscription for homeId {homeid}'.format(homeid=self.id))
+        query = """
+        subscription {{
+            liveMeasurement(homeId:"{homeid}") {{
+                timestamp
+                power
+                powerFactor
+                powerReactive
+                averagePower
+                lastMeterConsumption
+                accumulatedConsumption
+                accumulatedCost
+                currency
+                currentL1
+                currentL2
+                currentL3
+                voltagePhase1
+                voltagePhase2
+                voltagePhase3
+                signalStrength
+            }}
+        }}
+        """.format(homeid=self.id)
+        self.subscription_task = asyncio.create_task(self.subscription_client.subscribe(query=query,
+            handle=self.handle_live_measurement,
+            init_payload={'token': self.token}))
+
+        return self.subscription_task
+
+    def stop_subscription(self):
+        if self.subscription_task is not None:
+            if not self.subscription_task.cancelled():
+                logging.warning('Flagging for exit for task {homeid}'.format(homeid=self.id))
+                self.subscription_task.cancel()
+            elif self.subscription_task.done():
+                logging.info('Task {homeid} done.'.format(homeid=self.id))
+                self.subscription_task = None
+            else:
+                logging.info('Task {homeid} already cancelled, waiting for exit'.format(homeid=self.id))
+
+    def get_last_live_measurement(self):
+        if self.last_live_measurement_update is None:
+            return None
+
+        return self.last_live_measurement.copy()
+
+    def is_stale(self):
+        if self.last_live_measurement_update is None:
+            return False
+        elif datetime.now() - self.last_live_measurement_update > timedelta(minutes=30):
+            return True
+        return False
 
 class TibberHome(object):
     def __init__(self, token, data):
@@ -29,11 +97,9 @@ class TibberHome(object):
         self.realtime_consumption_enabled = False
         if self.features is not None:
             self.realtime_consumption_enabled = self.features.get('realTimeConsumptionEnabled')
-        self.last_live_measurement = None
-        self.last_live_measurement_update = None
         self.last_price = None
         self.last_price_update = None
-        self.subscription_client = GraphqlClient(endpoint=SUBSCRIPTION_ENDPOINT)
+        self.subscription_rt = None
         
         headers = { 'Authorization': 'Bearer ' + self.token }
         self.query_client = GraphqlClient(endpoint=QUERY_ENDPOINT, headers=headers)
@@ -43,32 +109,22 @@ class TibberHome(object):
             return self.app_nickname
         return self.id
 
-    def handle_live_measurement(self, data):
-        logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
-        self.last_live_measurement = data['data']['liveMeasurement'].copy()
-        self.last_live_measurement_update = datetime.now()
-
     def get_last_live_measurement(self):
-        if self.last_live_measurement_update is None:
-            return None
-        elif datetime.now() - self.last_live_measurement_update > timedelta(minutes=30):
-            logging.warning('Stale data for homeId {homeid}, restarting subscription'.format(homeid=self.id))
-            self.restart_subscription()
+        if not self.realtime_consumption_enabled or self.subscription_rt is None:
             return None
 
-        return self.last_live_measurement.copy()
+        if self.subscription_rt.is_stale():
+            logging.warning('Stale data for homeId {homeid}, stopping subscription'.format(homeid=self.id))
+            self.subscription_rt.stop_subscription()
+
+        return self.subscription_rt.get_last_live_measurement()
 
     def subscribe_live_measurements(self):
-        logging.info('Starting subscription thread for homeId {homeid}'.format(homeid=self.id))
-        self.subscription_thread = threading.Thread(target=subscription_thread, args=(self,), daemon=True)
-        self.subscription_thread.start()
+        if not self.realtime_consumption_enabled:
+            return
 
-    def restart_subscription(self):
-        self.last_live_measurement = None
-        self.last_live_measurement_update = None
-        if self.subscription_thread is not None:
-            logging.warning('Flagging for exit from Thread for {homeid}'.format(homeid=self.id))
-            EXIT_REQUEST = 1
+        self.subscription_rt = TibberHomeRT(self.token, self.id)
+        RT_HOMES[self.id] = self.subscription_rt
 
     def get_price(self):
         if self.last_price_update is None or datetime.now() - self.last_price_update > timedelta(seconds=30):
@@ -97,7 +153,6 @@ class TibberHome(object):
             self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
         
         return self.last_price
-
 
 class TibberCollector(object):
     def __init__(self):
@@ -190,6 +245,7 @@ class TibberCollector(object):
                 logging.warning('Unknown error processing home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
 
             live_measurement = home.get_last_live_measurement()
+
             if live_measurement is not None:
                 self.add_metrics_live_measurement(metrics, home, live_measurement)
 
@@ -214,35 +270,25 @@ class TibberCollector(object):
         """)
         return data['data']['viewer']['homes']
 
-def subscription_thread(home):
-        query = """
-        subscription {{
-            liveMeasurement(homeId:"{homeid}") {{
-                timestamp
-                power
-                powerFactor
-                powerReactive
-                averagePower
-                lastMeterConsumption
-                accumulatedConsumption
-                accumulatedCost
-                currency
-                currentL1
-                currentL2
-                currentL3
-                voltagePhase1
-                voltagePhase2
-                voltagePhase3
-                signalStrength
-            }}
-        }}
-        """.format(homeid=home.id)
-        logging.info('Subscribing to liveMeasurement for homeId {homeid}'.format(homeid=home.id))
-        asyncio.run(home.subscription_client.subscribe(query=query, 
-            handle=home.handle_live_measurement, 
-            init_payload={'token': home.token}), debug=True)
+async def subscriptions():
+    while True:
+        tasks = []
+        for rt in RT_HOMES.values():
+            if rt.subscription_task is None:
+                tasks.append(rt.subscribe_live_measurements())
+            else:
+                tasks.append(rt.subscription_task)
+        if tasks:
+            logging.info('Gather')
+            try:
+                await asyncio.gather(*tasks)
+            except asyncio.CancelledError as e:
+                logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
+                for rt in RT_HOMES.values():
+                    if rt.subscription_task  is not None and rt.subscription_task.done():
+                        rt.subscription_task = None
 
-
+        time.sleep(1)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Tibber Prometheus exporter')
@@ -259,10 +305,8 @@ if __name__ == '__main__':
     REGISTRY.register(TibberCollector())
     start_http_server(port)
     logging.info('HTTP server started on {port}'.format(port=port))
-
     try:
-        while EXIT_REQUEST == 0:
-            time.sleep(1)
+        asyncio.run(subscriptions())
     except KeyboardInterrupt:
         print("Break")
     except SystemExit:
