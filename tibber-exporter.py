@@ -67,9 +67,8 @@ class TibberHome(object):
         self.last_live_measurement = None
         self.last_live_measurement_update = None
         if self.subscription_thread is not None:
+            logging.warning('Flagging for exit from Thread for {homeid}'.format(homeid=self.id))
             EXIT_REQUEST = 1
-            sys.exit(1)
-        self.subscribe_live_measurements()
 
     def get_price(self):
         if self.last_price_update is None or datetime.now() - self.last_price_update > timedelta(seconds=30):
@@ -184,11 +183,11 @@ class TibberCollector(object):
                 price = home.get_price()
                 self.add_metrics_price(metrics, home, price)
             except (requests.exceptions.HTTPError, BrokenPipeError) as e:
-                logging.warning('Failed to query home {homeid} for price: {err}'.format(home.id, str(e)))
+                logging.warning('Failed to query home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
             except SystemExit as e:
                 raise e
             except Exception as e:
-                logging.warning('Unknown error processing home {homeid} for price: {err}'.format(home.id, str(e)))
+                logging.warning('Unknown error processing home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
 
             live_measurement = home.get_last_live_measurement()
             if live_measurement is not None:
@@ -246,7 +245,6 @@ def subscription_thread(home):
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(description='Tibber Prometheus exporter')
     parser.add_argument('--port', dest='port', default=PORT, help='Port to listen to')
 
@@ -260,10 +258,10 @@ if __name__ == '__main__':
 
     REGISTRY.register(TibberCollector())
     start_http_server(port)
+    logging.info('HTTP server started on {port}'.format(port=port))
+
     try:
-        while True:
-            if EXIT_REQUEST:
-                sys.exit(EXIT_REQUEST)
+        while EXIT_REQUEST == 0:
             time.sleep(1)
     except KeyboardInterrupt:
         print("Break")
