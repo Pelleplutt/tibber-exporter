@@ -100,7 +100,7 @@ class TibberHome(object):
         self.subscription_rt = None
         
         headers = { 'Authorization': 'Bearer ' + self.token }
-        self.query_client = GraphqlClient(endpoint=QUERY_ENDPOINT, headers=headers)
+        self.query_client = GraphqlClient(endpoint=QUERY_ENDPOINT, headers=headers, timeout=3.0)
 
     def get_name(self):
         if self.app_nickname is not None:
@@ -235,10 +235,8 @@ class TibberCollector(object):
             try:
                 price = home.get_price()
                 self.add_metrics_price(metrics, home, price)
-            except (requests.exceptions.HTTPError, BrokenPipeError) as e:
+            except (requests.exceptions.HTTPError, BrokenPipeError, requests.exceptions.Timeout) as e:
                 logging.warning('Failed to query home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
-            except SystemExit as e:
-                raise e
             except Exception as e:
                 logging.warning('Unknown error processing home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
 
