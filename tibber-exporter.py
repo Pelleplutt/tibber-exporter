@@ -66,14 +66,12 @@ class TibberHomeRT(object):
 
     def stop_subscription(self):
         if self.subscription_task is not None:
-            if not self.subscription_task.cancelled():
-                logging.warning('Flagging for exit for task {homeid}'.format(homeid=self.id))
-                self.subscription_task.cancel()
-            elif self.subscription_task.done():
+            if self.subscription_task.done():
                 logging.info('Task {homeid} done.'.format(homeid=self.id))
                 self.subscription_task = None
             else:
-                logging.info('Task {homeid} already cancelled, waiting for exit'.format(homeid=self.id))
+                logging.warning('Flagging for exit for task {homeid}'.format(homeid=self.id))
+                self.subscription_task.cancel()
 
     def get_last_live_measurement(self):
         if self.last_live_measurement_update is None:
