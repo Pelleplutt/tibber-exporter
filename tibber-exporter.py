@@ -112,7 +112,7 @@ class TibberHome(object):
             return None
 
         if self.subscription_rt.is_stale():
-            logging.warning('Stale data for homeId {homeid}, stopping subscription'.format(homeid=self.id))
+            logging.warning('Stale data for homeId {homeid}'.format(homeid=self.id))
             self.subscription_rt.stop_subscription()
 
         return self.subscription_rt.get_last_live_measurement()
