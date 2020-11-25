@@ -124,6 +124,11 @@ class TibberHome(object):
         self.subscription_rt = TibberHomeRT(self.token, self.id)
         RT_HOMES[self.id] = self.subscription_rt
 
+    def get_cached_price(self):
+        if self.last_price_update is not None and datetime.now() - self.last_price_update < timedelta(seconds=90):
+            return self.last_price.copy()
+        return None
+
     def get_price(self):
         if self.last_price_update is None or datetime.now() - self.last_price_update > timedelta(seconds=30):
             self.last_price_update = datetime.now()
@@ -150,7 +155,7 @@ class TibberHome(object):
             """.format(homeid=self.id))
             self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
         
-        return self.last_price
+        return self.last_price.copy()
 
 class TibberCollector(object):
     def __init__(self):
@@ -234,11 +239,14 @@ class TibberCollector(object):
         for id, home in self.homes.items():
             try:
                 price = home.get_price()
-                self.add_metrics_price(metrics, home, price)
             except (requests.exceptions.HTTPError, BrokenPipeError, requests.exceptions.Timeout) as e:
                 logging.warning('Failed to query home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
+                price = home.get_cached_price()
             except Exception as e:
                 logging.warning('Unknown error processing home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
+
+            if price is not None:
+                self.add_metrics_price(metrics, home, price)
 
             live_measurement = home.get_last_live_measurement()
 
