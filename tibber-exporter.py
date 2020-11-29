@@ -20,6 +20,10 @@ SUBSCRIPTION_ENDPOINT = 'wss://api.tibber.com/v1-beta/gql/subscriptions'
 QUERY_ENDPOINT = 'https://api.tibber.com/v1-beta/gql'
 RT_HOMES = {}
 
+# Number of seconds to wait for data after the initial connection
+# attempt for real time updates before considering the connection
+# dead
+RT_DATA_CONNECT_TIMEOUT_SECONDS=45
 # Number of seconds to allow inbetween real time consumption updates
 # before considering the connection dead
 RT_DATA_TIMEOUT_SECONDS=45
@@ -36,6 +40,7 @@ class TibberHomeRT(object):
         self.last_live_measurement_update = None
         self.subscription_client = GraphqlClient(endpoint=SUBSCRIPTION_ENDPOINT)
         self.subscription_task = None
+        self.subscription_start = None
 
     def handle_live_measurement(self, data):
         logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
@@ -69,11 +74,27 @@ class TibberHomeRT(object):
         self.subscription_task = asyncio.create_task(self.subscription_client.subscribe(query=query,
             handle=self.handle_live_measurement,
             init_payload={'token': self.token}))
+        self.subscription_start = datetime.now()
 
         return self.subscription_task
 
+    def void_subscription(self):
+        self.subscription_start = None
+        self.subscription_task = None
+        self.last_live_measurement_update = None
+
+    def is_subscribed(self):
+        return self.subscription_task is not None
+
+    def is_subscription_starting(self):
+        if self.is_subscribed() and self.last_live_measurement_update is None and\
+            datetime.now() - self.subscription_start > timedelta(seconds=RT_DATA_CONNECT_TIMEOUT_SECONDS):
+                return True
+
+        return False
+
     def stop_subscription(self):
-        if self.subscription_task is not None:
+        if self.is_subscribed():
             if self.subscription_task.done():
                 logging.info('Task {homeid} done.'.format(homeid=self.id))
                 self.subscription_task = None
@@ -88,8 +109,10 @@ class TibberHomeRT(object):
         return self.last_live_measurement.copy()
 
     def is_stale(self):
-        if self.last_live_measurement_update is None:
+        if self.is_subscription_starting():
             return False
+        elif not self.is_subscribed():
+            return True
         elif datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
             return True
         return False
@@ -297,8 +320,8 @@ async def subscriptions():
             except asyncio.CancelledError as e:
                 logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
                 for rt in RT_HOMES.values():
-                    if rt.subscription_task  is not None and rt.subscription_task.done():
-                        rt.subscription_task = None
+                    if rt.is_subscribed() and rt.subscription_task.done():
+                        rt.void_subscription()
 
         time.sleep(1)
 
