@@ -20,6 +20,14 @@ SUBSCRIPTION_ENDPOINT = 'wss://api.tibber.com/v1-beta/gql/subscriptions'
 QUERY_ENDPOINT = 'https://api.tibber.com/v1-beta/gql'
 RT_HOMES = {}
 
+# Number of seconds to allow inbetween real time consumption updates
+# before considering the connection dead
+RT_DATA_TIMEOUT_SECONDS=45
+# Allow fallback to price cache for this long
+PRICE_CACHE_TTL_SECONDS=90
+# Time between refresh of price cache, used to reduce hit on tibber API
+PRICE_CACHE_REFRESH_SECONDS=30
+
 class TibberHomeRT(object):
     def __init__(self, token, id):
         self.id = id
@@ -82,7 +90,7 @@ class TibberHomeRT(object):
     def is_stale(self):
         if self.last_live_measurement_update is None:
             return False
-        elif datetime.now() - self.last_live_measurement_update > timedelta(minutes=30):
+        elif datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
             return True
         return False
 
@@ -125,12 +133,12 @@ class TibberHome(object):
         RT_HOMES[self.id] = self.subscription_rt
 
     def get_cached_price(self):
-        if self.last_price_update is not None and datetime.now() - self.last_price_update < timedelta(seconds=90):
+        if self.last_price_update is not None and datetime.now() - self.last_price_update < timedelta(seconds=PRICE_CACHE_TTL_SECONDS):
             return self.last_price.copy()
         return None
 
     def get_price(self):
-        if self.last_price_update is None or datetime.now() - self.last_price_update > timedelta(seconds=30):
+        if self.last_price_update is None or datetime.now() - self.last_price_update > timedelta(seconds=PRICE_CACHE_REFRESH_SECONDS):
             self.last_price_update = datetime.now()
             logging.info('Fetching current priceinfo for homeId {homeid}'.format(homeid=self.id))
             data = self.query_client.execute(query="""
