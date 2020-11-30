@@ -113,7 +113,7 @@ class TibberHomeRT(object):
             return False
         elif not self.is_subscribed():
             return True
-        elif datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
+        elif self.last_live_measurement_update is not None and datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
             return True
         return False
 
