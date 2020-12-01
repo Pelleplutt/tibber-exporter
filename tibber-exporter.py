@@ -88,7 +88,7 @@ class TibberHomeRT(object):
 
     def is_subscription_starting(self):
         if self.is_subscribed() and self.last_live_measurement_update is None and\
-            datetime.now() - self.subscription_start > timedelta(seconds=RT_DATA_CONNECT_TIMEOUT_SECONDS):
+            datetime.now() - self.subscription_start < timedelta(seconds=RT_DATA_CONNECT_TIMEOUT_SECONDS):
                 return True
 
         return False
