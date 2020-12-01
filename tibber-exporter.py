@@ -113,7 +113,8 @@ class TibberHomeRT(object):
             return False
         elif not self.is_subscribed():
             return True
-        elif self.last_live_measurement_update is not None and datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
+        elif self.last_live_measurement_update is not None and\
+            datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
             return True
         return False
 
@@ -321,6 +322,7 @@ async def subscriptions():
                 logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
                 for rt in RT_HOMES.values():
                     if rt.is_subscribed() and rt.subscription_task.done():
+                        logging.info("Voiding subscription for {homeid".format(homeid=rt.id))
                         rt.void_subscription()
 
         time.sleep(1)
