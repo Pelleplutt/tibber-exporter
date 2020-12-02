@@ -314,19 +314,22 @@ async def subscriptions():
                 tasks.append(rt.subscribe_live_measurements())
             else:
                 tasks.append(rt.subscription_task)
-        if tasks:
-            logging.info('Suspending thread waiting for task Gather')
-            try:
-                await asyncio.gather(*tasks)
-            except asyncio.CancelledError as e:
-                logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
+                
+        if not tasks:
+            time.sleep(1)
+            continue
 
-            for rt in RT_HOMES.values():
-                if rt.is_subscribed() and rt.subscription_task.done():
-                    logging.info("Voiding subscription for {homeid}".format(homeid=rt.id))
-                    rt.void_subscription()
+        logging.info('Suspending thread waiting for task Gather')
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError as e:
+            logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
 
-        time.sleep(1)
+        for rt in RT_HOMES.values():
+            if rt.is_subscribed() and rt.subscription_task.done():
+                logging.info("Voiding subscription for {homeid}".format(homeid=rt.id))
+                rt.void_subscription()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Tibber Prometheus exporter')
