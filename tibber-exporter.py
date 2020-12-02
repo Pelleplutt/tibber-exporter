@@ -315,15 +315,16 @@ async def subscriptions():
             else:
                 tasks.append(rt.subscription_task)
         if tasks:
-            logging.info('Gather')
+            logging.info('Suspending thread waiting for task Gather')
             try:
                 await asyncio.gather(*tasks)
             except asyncio.CancelledError as e:
                 logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
-                for rt in RT_HOMES.values():
-                    if rt.is_subscribed() and rt.subscription_task.done():
-                        logging.info("Voiding subscription for {homeid}".format(homeid=rt.id))
-                        rt.void_subscription()
+
+            for rt in RT_HOMES.values():
+                if rt.is_subscribed() and rt.subscription_task.done():
+                    logging.info("Voiding subscription for {homeid}".format(homeid=rt.id))
+                    rt.void_subscription()
 
         time.sleep(1)
 
