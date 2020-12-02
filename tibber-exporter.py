@@ -346,7 +346,5 @@ if __name__ == '__main__':
         asyncio.run(subscriptions())
     except KeyboardInterrupt:
         print("Break")
-    except SystemExit:
-        print("Aborting")
 
 exit(0)
