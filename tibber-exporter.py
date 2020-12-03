@@ -157,7 +157,8 @@ class TibberHome(object):
         RT_HOMES[self.id] = self.subscription_rt
 
     def get_cached_price(self):
-        if self.last_price_update is not None and datetime.now() - self.last_price_update < timedelta(seconds=PRICE_CACHE_TTL_SECONDS):
+        if self.last_price is not None and self.last_price_update is not None and\
+            datetime.now() - self.last_price_update < timedelta(seconds=PRICE_CACHE_TTL_SECONDS):
             return self.last_price.copy()
         return None
 
