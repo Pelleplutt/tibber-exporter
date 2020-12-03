@@ -7,9 +7,12 @@ import logging
 import os
 import pprint
 import requests
+import socket
 import sys
 import threading
 import time
+import urllib3
+import websockets
 from datetime import datetime, timedelta
 from python_graphql_client import GraphqlClient
 from prometheus_client import start_http_server, Gauge
@@ -272,7 +275,9 @@ class TibberCollector(object):
         for id, home in self.homes.items():
             try:
                 price = home.get_price()
-            except (requests.exceptions.HTTPError, BrokenPipeError, requests.exceptions.Timeout) as e:
+            except (requests.exceptions.HTTPError, BrokenPipeError,
+                requests.exceptions.Timeout, socket.timeout,
+                urllib3.exceptions.ReadTimeoutError) as e:
                 logging.warning('Failed to query home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
                 price = home.get_cached_price()
             except Exception as e:
@@ -325,6 +330,8 @@ async def subscriptions():
             await asyncio.gather(*tasks)
         except asyncio.CancelledError as e:
             logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
+        except websockets.exceptions.ConnectionClosedError as e:
+            logging.error('Connection closed ({err})'.format(err=str(e)))
 
         for rt in RT_HOMES.values():
             if rt.is_subscribed() and rt.subscription_task.done():
