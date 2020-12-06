@@ -155,7 +155,7 @@ class TibberHome(object):
 
         return self.subscription_rt.get_last_live_measurement()
 
-    def subscribe_live_measurements(self):
+    def create_live_subscription_handlers(self):
         if not self.realtime_consumption_enabled:
             return
 
@@ -224,7 +224,7 @@ class TibberCollector(object):
         for home in homes:
             tibberhome = TibberHome(self.token, home)
             self.homes[tibberhome.id] = tibberhome
-            tibberhome.subscribe_live_measurements()
+            tibberhome.create_live_subscription_handlers()
 
     def setup_metrics_price(self, metrics):
         metrics['current_price_energy'] = GaugeMetricFamily('tibber_price_energy','Current energy price', labels=['id', 'home', 'currency'])
