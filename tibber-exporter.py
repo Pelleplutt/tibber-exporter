@@ -116,12 +116,18 @@ class TibberHomeRT(object):
 
     def is_stale(self):
         if self.is_subscription_starting():
+            logging.debug('Data is sort of stale, but OK, we are starting up')
             return False
         elif not self.is_subscribed():
+            logging.debug('Data is stale, subscription is not starting and we are not subscribed')
             return True
-        elif self.last_live_measurement_update is not None and\
-            datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
+        elif self.last_live_measurement_update is None:
+            logging.debug('Data is stale, we are not starting, we are subscribed and no live measurement update')
             return True
+        elif datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
+            logging.debug('Data is stale, we are not starting, we are subscribed and last live measurement was {last}'.format(last=str(self.last_live_measurement_update)))
+            return True
+
         return False
 
 class TibberHome(object):
