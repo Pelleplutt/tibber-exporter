@@ -286,6 +286,7 @@ class TibberCollector(object):
         self.setup_metrics_price(metrics)
         self.setup_metrics_live_measurement(metrics)
         for id, home in self.homes.items():
+            price = None
             try:
                 price = home.get_price()
             except (requests.exceptions.HTTPError, BrokenPipeError,
