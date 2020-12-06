@@ -169,7 +169,8 @@ class TibberHome(object):
         return None
 
     def get_price(self):
-        if self.last_price_update is None or datetime.now() - self.last_price_update > timedelta(seconds=PRICE_CACHE_REFRESH_SECONDS):
+        if self.last_price_update is None or\
+            datetime.now() - self.last_price_update > timedelta(seconds=PRICE_CACHE_REFRESH_SECONDS):
             self.last_price_update = datetime.now()
             logging.info('Fetching current priceinfo for homeId {homeid}'.format(homeid=self.id))
             data = self.query_client.execute(query="""
