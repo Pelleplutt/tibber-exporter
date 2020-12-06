@@ -47,8 +47,11 @@ class TibberHomeRT(object):
 
     def handle_live_measurement(self, data):
         logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
-        self.last_live_measurement = data['data']['liveMeasurement'].copy()
-        self.last_live_measurement_update = datetime.now()
+        try:
+            self.last_live_measurement = data['data']['liveMeasurement'].copy()
+            self.last_live_measurement_update = datetime.now()
+        except KeyError as e:
+            logging.warning('Failed to parse live measurement update: {err}'.format(err=str(e)))
 
     def subscribe_live_measurements(self):
         logging.info('Starting subscription for homeId {homeid}'.format(homeid=self.id))
@@ -189,7 +192,11 @@ class TibberHome(object):
                 }}
             }}
             """.format(homeid=self.id))
-            self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
+            try:
+                self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
+            except TypeError as e:
+                logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
+                return None
         
         return self.last_price.copy()
 
@@ -208,7 +215,12 @@ class TibberCollector(object):
             raise AssertionError('TIBBER_TOKEN environment is not set')
 
     def setup_subscriptions(self):
-        homes = self.get_homes()
+        homes = []
+        try:
+            homes = self.get_homes()
+        except requests.exceptions.HTTPError as e:
+            logging.error('Failed to query homes: {err}'.format(err=str(e)))
+
         for home in homes:
             tibberhome = TibberHome(self.token, home)
             self.homes[tibberhome.id] = tibberhome
@@ -310,7 +322,13 @@ class TibberCollector(object):
             }
         }
         """)
-        return data['data']['viewer']['homes']
+        try:
+            return data['data']['viewer']['homes']
+        except TypeError as e:
+            logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
+
+        return None
+
 
 async def subscriptions():
     while True:
@@ -330,8 +348,8 @@ async def subscriptions():
             await asyncio.gather(*tasks)
         except asyncio.CancelledError as e:
             logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
-        except websockets.exceptions.ConnectionClosedError as e:
-            logging.error('Connection closed ({err})'.format(err=str(e)))
+        except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidStatusCode) as e:
+            logging.error('Connection error ({err})'.format(err=str(e)))
 
         for rt in RT_HOMES.values():
             if rt.is_subscribed() and rt.subscription_task.done():
