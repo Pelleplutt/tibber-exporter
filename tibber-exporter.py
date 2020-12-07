@@ -203,9 +203,10 @@ class TibberHome(object):
                 self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
             except TypeError as e:
                 logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
-                return None
-        
-        return self.last_price.copy()
+
+        if self.last_price is not None:
+            return self.last_price.copy()
+        return None
 
 class TibberCollector(object):
     def __init__(self):
