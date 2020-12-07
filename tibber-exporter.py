@@ -341,6 +341,7 @@ class TibberCollector(object):
 
 async def subscriptions():
     while True:
+        loop_start = datetime.now()
         tasks = []
         for rt in RT_HOMES.values():
             if rt.subscription_task is None:
@@ -364,6 +365,11 @@ async def subscriptions():
             if rt.is_subscribed() and rt.subscription_task.done():
                 logging.info("Voiding subscription for {homeid}".format(homeid=rt.id))
                 rt.void_subscription()
+
+        # If we power through the loop in a short time, backoff and wait before we reconnect
+        # to play nice
+        if datetime.now() - loop_start < timedelta(seconds=RT_DATA_CONNECT_TIMEOUT_SECONDS):
+            time.sleep(10)
 
 
 if __name__ == '__main__':
