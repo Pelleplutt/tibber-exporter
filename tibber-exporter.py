@@ -358,8 +358,8 @@ async def subscriptions():
             await asyncio.gather(*tasks)
         except asyncio.CancelledError as e:
             logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
-        except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidStatusCode) as e:
-            logging.error('Connection error ({err})'.format(err=str(e)))
+        except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidStatusCode, websockets.exceptions.InvalidMessage) as e:
+            logging.error('Subscription connection error ({err})'.format(err=str(e)))
 
         for rt in RT_HOMES.values():
             if rt.is_subscribed() and rt.subscription_task.done():
