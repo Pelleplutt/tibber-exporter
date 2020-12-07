@@ -26,10 +26,10 @@ RT_HOMES = {}
 # Number of seconds to wait for data after the initial connection
 # attempt for real time updates before considering the connection
 # dead
-RT_DATA_CONNECT_TIMEOUT_SECONDS=45
+RT_DATA_CONNECT_TIMEOUT_SECONDS=60
 # Number of seconds to allow inbetween real time consumption updates
 # before considering the connection dead
-RT_DATA_TIMEOUT_SECONDS=45
+RT_DATA_TIMEOUT_SECONDS=60
 # Allow fallback to price cache for this long
 PRICE_CACHE_TTL_SECONDS=90
 # Time between refresh of price cache, used to reduce hit on tibber API
