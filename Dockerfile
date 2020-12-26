@@ -1,4 +1,4 @@
-FROM python:3.7
+FROM python:3.9.1
 
 RUN addgroup prometheus
 RUN adduser --disabled-password --no-create-home --home /app  --gecos '' --ingroup prometheus prometheus
