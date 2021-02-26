@@ -266,13 +266,19 @@ class TibberCollector(object):
             home.id,
             home.get_name(),
         ]
-        metrics['accumulated_consumption'].add_metric(labels, float(data['lastMeterConsumption']))
-        metrics['today_accumulated_consumption'].add_metric(labels, float(data['accumulatedConsumption']))
-        metrics['today_accumulated_cost'].add_metric([home.id, home.get_name(), data['currency']], float(data['accumulatedCost']))
+        if data.get('lastMeterConsumption') is not None:
+            metrics['accumulated_consumption'].add_metric(labels, float(data['lastMeterConsumption']))
+        if data.get('accumulatedConsumption') is not None:
+            metrics['today_accumulated_consumption'].add_metric(labels, float(data['accumulatedConsumption']))
+        if data.get('accumulatedCost') is not None:
+            metrics['today_accumulated_cost'].add_metric([home.id, home.get_name(), data['currency']], float(data['accumulatedCost']))
         metrics['today_avg_power'].add_metric(labels, float(data['averagePower']))
         metrics['power'].add_metric(labels, float(data['power']))
-        metrics['power_factor'].add_metric(labels, float(data['powerFactor']))
-        metrics['power_reactive'].add_metric(labels, float(data['powerReactive']))
+
+        if data.get('powerFactor') is not None:
+            metrics['power_factor'].add_metric(labels, float(data['powerFactor']))
+            metrics['power_reactive'].add_metric(labels, float(data['powerReactive']))
+
         metrics['current'].add_metric([home.id, home.get_name(), '1'], float(data['currentL1']))
         metrics['current'].add_metric([home.id, home.get_name(), '2'], float(data['currentL2']))
         metrics['current'].add_metric([home.id, home.get_name(), '3'], float(data['currentL3']))
