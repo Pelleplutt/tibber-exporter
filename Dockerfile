@@ -4,7 +4,7 @@ RUN addgroup prometheus
 RUN adduser --disabled-password --no-create-home --home /app  --gecos '' --ingroup prometheus prometheus
 
 COPY requirements.txt /app/
-RUN /usr/local/bin/pip3.7 install -r /app/requirements.txt
+RUN /usr/local/bin/pip install -r /app/requirements.txt
 
 COPY tibber-exporter.py /app/
 
