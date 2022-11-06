@@ -280,12 +280,24 @@ class TibberCollector(object):
             metrics['power_factor'].add_metric(labels, float(data['powerFactor']))
             metrics['power_reactive'].add_metric(labels, float(data['powerReactive']))
 
-        metrics['current'].add_metric([home.id, home.get_name(), '1'], float(data['currentL1']))
-        metrics['current'].add_metric([home.id, home.get_name(), '2'], float(data['currentL2']))
-        metrics['current'].add_metric([home.id, home.get_name(), '3'], float(data['currentL3']))
-        metrics['potential'].add_metric([home.id, home.get_name(), '1'], float(data['voltagePhase1']))
-        metrics['potential'].add_metric([home.id, home.get_name(), '2'], float(data['voltagePhase2']))
-        metrics['potential'].add_metric([home.id, home.get_name(), '3'], float(data['voltagePhase3']))
+        if data['currentL1'] is not None:
+            metrics['current'].add_metric([home.id, home.get_name(), '1'], float(data['currentL1']))
+
+        if data['currentL2'] is not None:
+            metrics['current'].add_metric([home.id, home.get_name(), '2'], float(data['currentL2']))
+
+        if data['currentL3'] is not None:
+            metrics['current'].add_metric([home.id, home.get_name(), '3'], float(data['currentL3']))
+
+        if data['voltagePhase1'] is not None:
+            metrics['potential'].add_metric([home.id, home.get_name(), '1'], float(data['voltagePhase1']))
+
+        if data['voltagePhase2'] is not None:
+            metrics['potential'].add_metric([home.id, home.get_name(), '2'], float(data['voltagePhase2']))
+
+        if data['voltagePhase3'] is not None:
+            metrics['potential'].add_metric([home.id, home.get_name(), '3'], float(data['voltagePhase3']))
+
         if data['signalStrength'] is not None:
             metrics['signal_strength'].add_metric(labels, float(data['signalStrength']))
 
