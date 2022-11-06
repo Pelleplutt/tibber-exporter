@@ -200,7 +200,8 @@ class TibberHome(object):
             }}
             """.format(homeid=self.id))
             try:
-                self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
+                if data['data']['viewer']['home']['currentSubscription'] is not None:
+                    self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
             except TypeError as e:
                 logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
 
