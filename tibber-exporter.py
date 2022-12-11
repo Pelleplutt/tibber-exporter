@@ -50,7 +50,7 @@ class TibberHomeRT(object):
         try:
             self.last_live_measurement = data['data']['liveMeasurement'].copy()
             self.last_live_measurement_update = datetime.now()
-        except KeyError as e:
+        except (KeyError, TypeError) as e:
             logging.warning('Failed to parse live measurement update: {err}'.format(err=str(e)))
 
     def subscribe_live_measurements(self):
@@ -375,7 +375,7 @@ async def subscriptions():
         logging.info('Suspending thread waiting for task Gather')
         try:
             await asyncio.gather(*tasks)
-        except asyncio.CancelledError as e:
+        except (asyncio.CancelledError, TimeoutError) as e:
             logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
         except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidStatusCode, websockets.exceptions.InvalidMessage) as e:
             logging.error('Subscription connection error ({err})'.format(err=str(e)))
