@@ -44,6 +44,7 @@ class TibberHomeRT(object):
         self.subscription_client = GraphqlClient(endpoint=SUBSCRIPTION_ENDPOINT)
         self.subscription_task = None
         self.subscription_start = None
+        self.connect_count = 0
 
     def handle_live_measurement(self, data):
         logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
@@ -81,6 +82,7 @@ class TibberHomeRT(object):
             handle=self.handle_live_measurement,
             init_payload={'token': self.token}))
         self.subscription_start = datetime.now()
+        self.connect_count += 1
 
         return self.subscription_task
 
@@ -251,6 +253,7 @@ class TibberCollector(object):
         metrics['current']                       = GaugeMetricFamily('tibber_current_a',                   'Current power draw',                      labels=['id', 'home', 'phase'])
         metrics['potential']                     = GaugeMetricFamily('tibber_potential_v',                 'Current electric potential',              labels=['id', 'home', 'phase'])
         metrics['signal_strength']               = GaugeMetricFamily('tibber_pulse_signal_strength_db',    'Pulse Device signal strength',            labels=['id', 'home'])
+        metrics['live_reconnect_count']          = CounterMetricFamily('tibber_live_reconnect_count',      'Number of reconnects to live service',    labels=['id', 'home'])
 
     def add_metrics_price(self, metrics, home, data):
         labels = [
@@ -300,6 +303,9 @@ class TibberCollector(object):
 
         if data['signalStrength'] is not None:
             metrics['signal_strength'].add_metric(labels, float(data['signalStrength']))
+
+        if home.subscription_rt is not None:
+            metrics['live_reconnect_count'].add_metric(labels, home.subscription_rt.connect_count)
 
     def collect(self):
         logging.info('Collect')
