@@ -270,39 +270,40 @@ class TibberCollector(object):
             home.id,
             home.get_name(),
         ]
-        if data.get('lastMeterConsumption') is not None:
-            metrics['accumulated_consumption'].add_metric(labels, float(data['lastMeterConsumption']))
-        if data.get('accumulatedConsumption') is not None:
-            metrics['today_accumulated_consumption'].add_metric(labels, float(data['accumulatedConsumption']))
-        if data.get('accumulatedCost') is not None:
-            metrics['today_accumulated_cost'].add_metric([home.id, home.get_name(), data['currency']], float(data['accumulatedCost']))
-        metrics['today_avg_power'].add_metric(labels, float(data['averagePower']))
-        metrics['power'].add_metric(labels, float(data['power']))
+        if data is not None:
+            if data.get('lastMeterConsumption') is not None:
+                metrics['accumulated_consumption'].add_metric(labels, float(data['lastMeterConsumption']))
+            if data.get('accumulatedConsumption') is not None:
+                metrics['today_accumulated_consumption'].add_metric(labels, float(data['accumulatedConsumption']))
+            if data.get('accumulatedCost') is not None:
+                metrics['today_accumulated_cost'].add_metric([home.id, home.get_name(), data['currency']], float(data['accumulatedCost']))
+            metrics['today_avg_power'].add_metric(labels, float(data['averagePower']))
+            metrics['power'].add_metric(labels, float(data['power']))
 
-        if data.get('powerFactor') is not None:
-            metrics['power_factor'].add_metric(labels, float(data['powerFactor']))
-            metrics['power_reactive'].add_metric(labels, float(data['powerReactive']))
+            if data.get('powerFactor') is not None:
+                metrics['power_factor'].add_metric(labels, float(data['powerFactor']))
+                metrics['power_reactive'].add_metric(labels, float(data['powerReactive']))
 
-        if data['currentL1'] is not None:
-            metrics['current'].add_metric([home.id, home.get_name(), '1'], float(data['currentL1']))
+            if data['currentL1'] is not None:
+                metrics['current'].add_metric([home.id, home.get_name(), '1'], float(data['currentL1']))
 
-        if data['currentL2'] is not None:
-            metrics['current'].add_metric([home.id, home.get_name(), '2'], float(data['currentL2']))
+            if data['currentL2'] is not None:
+                metrics['current'].add_metric([home.id, home.get_name(), '2'], float(data['currentL2']))
 
-        if data['currentL3'] is not None:
-            metrics['current'].add_metric([home.id, home.get_name(), '3'], float(data['currentL3']))
+            if data['currentL3'] is not None:
+                metrics['current'].add_metric([home.id, home.get_name(), '3'], float(data['currentL3']))
 
-        if data['voltagePhase1'] is not None:
-            metrics['potential'].add_metric([home.id, home.get_name(), '1'], float(data['voltagePhase1']))
+            if data['voltagePhase1'] is not None:
+                metrics['potential'].add_metric([home.id, home.get_name(), '1'], float(data['voltagePhase1']))
 
-        if data['voltagePhase2'] is not None:
-            metrics['potential'].add_metric([home.id, home.get_name(), '2'], float(data['voltagePhase2']))
+            if data['voltagePhase2'] is not None:
+                metrics['potential'].add_metric([home.id, home.get_name(), '2'], float(data['voltagePhase2']))
 
-        if data['voltagePhase3'] is not None:
-            metrics['potential'].add_metric([home.id, home.get_name(), '3'], float(data['voltagePhase3']))
+            if data['voltagePhase3'] is not None:
+                metrics['potential'].add_metric([home.id, home.get_name(), '3'], float(data['voltagePhase3']))
 
-        if data['signalStrength'] is not None:
-            metrics['signal_strength'].add_metric(labels, float(data['signalStrength']))
+            if data['signalStrength'] is not None:
+                metrics['signal_strength'].add_metric(labels, float(data['signalStrength']))
 
         if home.subscription_rt is not None:
             metrics['live_reconnect_count'].add_metric(labels, home.subscription_rt.connect_count)
@@ -333,9 +334,7 @@ class TibberCollector(object):
                 self.add_metrics_price(metrics, home, price)
 
             live_measurement = home.get_last_live_measurement()
-
-            if live_measurement is not None:
-                self.add_metrics_live_measurement(metrics, home, live_measurement)
+            self.add_metrics_live_measurement(metrics, home, live_measurement)
 
         for key, val in metrics.items():
             yield val
