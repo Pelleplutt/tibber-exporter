@@ -83,19 +83,26 @@ class TibberHomeRT(object):
 
     async def subscribe_live_measurements(self):
         logging.info(f'Starting subscription for homeId {self.id}')
+        await self.void_subscription()
         self.subscription_start = datetime.now()
         self.connect_count += 1
 
+        await self.subscription_client.connect_async()
+
+        self.subscription_task = asyncio.create_task(self.live_subscription(self.subscription_client))
+        def _task_done(future):
+            logging.debug(f'Task done callback, voiding subscription homeId {self.id}')
+            self.void_subscription()
+
+        self.subscription_task.add_done_callback(_task_done)
+        return self.subscription_task
+
+    async def void_subscription(self):
         if self.subscription_client_transport.websocket is not None:
             await self.subscription_client_transport.close()
         if hasattr(self.subscription_client, "session"):
             await self.subscription_client.close()
-        await self.subscription_client.connect_async()
 
-        self.subscription_task = asyncio.create_task(self.live_subscription(self.subscription_client))
-        return self.subscription_task
-
-    async def void_subscription(self):
         self.subscription_start = None
         self.subscription_task = None
         self.last_live_measurement_update = None
@@ -110,11 +117,11 @@ class TibberHomeRT(object):
 
         return False
 
-    def stop_subscription(self):
+    def request_subscription_stop(self):
         if self.is_subscribed():
             if self.subscription_task.done():
                 logging.info(f'Task {self.id} done.')
-                self.subscription_task = None
+                self.void_subscription()
             else:
                 logging.warning(f'Flagging for exit for task {self.id}')
                 self.subscription_task.cancel()
@@ -171,7 +178,7 @@ class TibberHome(object):
 
         if self.subscription_rt.is_stale():
             logging.warning(f'Stale data for homeId {self.id}')
-            self.subscription_rt.stop_subscription()
+            self.subscription_rt.request_subscription_stop()
 
         return self.subscription_rt.get_last_live_measurement()
 
@@ -404,7 +411,6 @@ async def subscriptions():
             logging.error(f'Subscription connection error ({str(e)})')
         except (websockets.exceptions.ConnectionClosedError) as e:
             logging.info(f'Subscription connection closed ({str(e)})')
-            await rt.void_subscription()
 
         for rt in RT_HOMES.values():
             if rt.subscription_task is not None:
@@ -414,6 +420,7 @@ async def subscriptions():
                         raise exception
                 except Exception as e:
                     logging.error(f'Subscription task exception ({str(e)})')
+                    rt.request_subscription_stop()
 
             if rt.is_subscribed() and rt.subscription_task.done():
                 logging.info(f'Voiding subscription for {rt.id}')
