@@ -426,18 +426,22 @@ async def subscriptions():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Tibber Prometheus exporter')
     parser.add_argument('--port', dest='port', default=PORT, help='Port to listen to')
+    parser.add_argument('--log', dest='log', default='INFO', help='Loglevel, one of DEBUG, INFO, WARNING, ERROR in decreasing detail')
+
+    args = parser.parse_args()
+
+    numeric_loglevel = getattr(logging, args.log.upper(), None)
+    if not isinstance(numeric_loglevel, int):
+        raise ValueError('Invalid log level: %s' % args.log)
 
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
-        level=logging.INFO,
+        level=numeric_loglevel,
         datefmt='%Y-%m-%d %H:%M:%S')
 
-    args = parser.parse_args()
-    port = args.port
-
     REGISTRY.register(TibberCollector())
-    start_http_server(port)
-    logging.info('HTTP server started on {port}'.format(port=port))
+    start_http_server(args.port)
+    logging.info('HTTP server started on {port}'.format(port=args.port))
     try:
         asyncio.run(subscriptions())
     except KeyboardInterrupt:
