@@ -52,8 +52,8 @@ class TibberHomeRT(object):
         self.connect_count = 0
 
     async def live_subscription(self, client):
-        query = gql("""subscription {{
-                liveMeasurement(homeId:"{homeid}") {{
+        query = gql(f"""subscription {{
+                liveMeasurement(homeId:"{self.id}") {{
                     timestamp
                     power
                     powerFactor
@@ -72,17 +72,17 @@ class TibberHomeRT(object):
                     signalStrength
                 }}
             }}
-        """.format(homeid=self.id))
+        """)
         async for data in client.subscribe(document=query):
-            logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
+            logging.info(f'Got live measurement update for homeId {self.id}')
             try:
                 self.last_live_measurement = data['liveMeasurement'].copy()
                 self.last_live_measurement_update = datetime.now()
             except (KeyError, TypeError) as e:
-                logging.warning('Failed to parse live measurement update: {err}'.format(err=str(e)))
+                logging.warning(f'Failed to parse live measurement update: {str(e)}')
 
     async def subscribe_live_measurements(self):
-        logging.info('Starting subscription for homeId {homeid}'.format(homeid=self.id))
+        logging.info(f'Starting subscription for homeId {self.id}')
         self.subscription_start = datetime.now()
         self.connect_count += 1
 
@@ -112,10 +112,10 @@ class TibberHomeRT(object):
     def stop_subscription(self):
         if self.is_subscribed():
             if self.subscription_task.done():
-                logging.info('Task {homeid} done.'.format(homeid=self.id))
+                logging.info(f'Task {self.id} done.')
                 self.subscription_task = None
             else:
-                logging.warning('Flagging for exit for task {homeid}'.format(homeid=self.id))
+                logging.warning(f'Flagging for exit for task {self.id}')
                 self.subscription_task.cancel()
 
     def get_last_live_measurement(self):
@@ -135,7 +135,7 @@ class TibberHomeRT(object):
             logging.debug('Data is stale, we are not starting, we are subscribed and no live measurement update')
             return True
         elif datetime.now() - self.last_live_measurement_update > timedelta(seconds=RT_DATA_TIMEOUT_SECONDS):
-            logging.debug('Data is stale, we are not starting, we are subscribed and last live measurement was {last}'.format(last=str(self.last_live_measurement_update)))
+            logging.debug(f'Data is stale, we are not starting, we are subscribed and last live measurement was {str(self.last_live_measurement_update)}')
             return True
 
         return False
@@ -169,7 +169,7 @@ class TibberHome(object):
             return None
 
         if self.subscription_rt.is_stale():
-            logging.warning('Stale data for homeId {homeid}'.format(homeid=self.id))
+            logging.warning(f'Stale data for homeId {self.id}')
             self.subscription_rt.stop_subscription()
 
         return self.subscription_rt.get_last_live_measurement()
@@ -178,7 +178,7 @@ class TibberHome(object):
         if not self.realtime_consumption_enabled:
             return
 
-        logging.debug('Setting up real time subscription at {url}'.format(url=self.websocketsubscriptionurl))
+        logging.debug(f'Setting up real time subscription at {self.websocketsubscriptionurl}')
         self.subscription_rt = TibberHomeRT(self.token, self.id, self.websocketsubscriptionurl)
         RT_HOMES[self.id] = self.subscription_rt
 
@@ -192,11 +192,11 @@ class TibberHome(object):
         if self.last_price_update is None or\
             datetime.now() - self.last_price_update > timedelta(seconds=PRICE_CACHE_REFRESH_SECONDS):
             self.last_price_update = datetime.now()
-            logging.info('Fetching current priceinfo for homeId {homeid}'.format(homeid=self.id))
-            data = self.query_client.execute(document=gql("""
+            logging.info(f'Fetching current priceinfo for homeId {self.id}')
+            data = self.query_client.execute(document=gql(f"""
             {{
                 viewer {{
-                    home(id: "{homeid}") {{
+                    home(id: "{self.id}") {{
                         id
                         currentSubscription {{
                             priceInfo {{
@@ -212,12 +212,12 @@ class TibberHome(object):
                     }}
                 }}
             }}
-            """.format(homeid=self.id)))
+            """))
             try:
                 if data['viewer']['home']['currentSubscription'] is not None:
                     self.last_price = data['viewer']['home']['currentSubscription']['priceInfo']['current']
             except TypeError as e:
-                logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
+                logging.warning(f'Failed to get price from response {data}: {str(e)}')
 
         if self.last_price is not None:
             return self.last_price.copy()
@@ -243,7 +243,7 @@ class TibberCollector(object):
         try:
             homes, websocketsubscriptionurl = self.get_homes()
         except requests.exceptions.HTTPError as e:
-            logging.error('Failed to query homes: {err}'.format(err=str(e)))
+            logging.error(f'Failed to query homes: {str(e)}')
 
         for home in homes:
             tibberhome = TibberHome(self.token, home, websocketsubscriptionurl)
@@ -338,10 +338,10 @@ class TibberCollector(object):
             except (requests.exceptions.HTTPError, BrokenPipeError,
                 requests.exceptions.Timeout, socket.timeout,
                 urllib3.exceptions.ReadTimeoutError) as e:
-                logging.warning('Failed to query home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
+                logging.warning(f'Failed to query home {home.id} for price: {str(e)}')
                 price = home.get_cached_price()
             except Exception as e:
-                logging.warning('Unknown error processing home {homeid} for price: {err}'.format(homeid=home.id, err=str(e)))
+                logging.warning(f'Unknown error processing home {home.id} for price: {str(e)}')
 
             if price is not None:
                 self.add_metrics_price(metrics, home, price)
@@ -372,7 +372,7 @@ class TibberCollector(object):
         try:
             return data['viewer']['homes'], data['viewer']['websocketSubscriptionUrl']
         except TypeError as e:
-            logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
+            logging.warning(f'Failed to get price from response {data}: {str(e)}')
 
         return None
 
@@ -395,14 +395,14 @@ async def subscriptions():
         try:
             await asyncio.gather(*tasks)
         except (asyncio.CancelledError, TimeoutError) as e:
-            logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
+            logging.warning(f'Async operation cancelled ({str(e)}) restarting operations')
         except (exceptions.TransportError,
                 exceptions.TransportClosed,
                 exceptions.TransportQueryError) as e:
 
-            logging.error('Subscription connection error ({err})'.format(err=str(e)))
+            logging.error(f'Subscription connection error ({str(e)})')
         except (websockets.exceptions.ConnectionClosedError) as e:
-            logging.info('Subscription connection closed ({err})'.format(err=str(e)))
+            logging.info(f'Subscription connection closed ({str(e)})')
 
         for rt in RT_HOMES.values():
             if rt.subscription_task is not None:
@@ -411,10 +411,10 @@ async def subscriptions():
                     if exception is not None:
                         raise exception
                 except Exception as e:
-                    logging.error('Subscription task exception ({err})'.format(err=str(e)))
+                    logging.error(f'Subscription task exception ({str(e)})')
 
             if rt.is_subscribed() and rt.subscription_task.done():
-                logging.info("Voiding subscription for {homeid}".format(homeid=rt.id))
+                logging.info(f'Voiding subscription for {rt.id}')
                 rt.void_subscription()
 
         # If we power through the loop in a short time, backoff and wait before we reconnect
@@ -432,7 +432,7 @@ if __name__ == '__main__':
 
     numeric_loglevel = getattr(logging, args.log.upper(), None)
     if not isinstance(numeric_loglevel, int):
-        raise ValueError('Invalid log level: %s' % args.log)
+        raise ValueError(f'Invalid log level: {args.log}')
 
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
@@ -441,7 +441,7 @@ if __name__ == '__main__':
 
     REGISTRY.register(TibberCollector())
     start_http_server(args.port)
-    logging.info('HTTP server started on {port}'.format(port=args.port))
+    logging.info(f'HTTP server started on {args.port}')
     try:
         asyncio.run(subscriptions())
     except KeyboardInterrupt:
