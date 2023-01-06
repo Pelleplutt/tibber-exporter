@@ -46,9 +46,9 @@ class TibberHomeRT(object):
         self.subscription_client_transport = WebsocketsTransport(
             url=websocketsubscriptionurl,
             headers = { 'Authorization': 'Bearer ' + self.token })
+        self.subscription_client = Client(transport=self.subscription_client_transport)
         self.subscription_task = None
         self.subscription_start = None
-        self.subscription_client = None
         self.connect_count = 0
 
     async def live_subscription(self, client):
@@ -86,15 +86,16 @@ class TibberHomeRT(object):
         self.subscription_start = datetime.now()
         self.connect_count += 1
 
-        self.subscription_client = Client(transport=self.subscription_client_transport)
+        if self.subscription_client_transport.websocket is not None:
+            await self.subscription_client_transport.close()
+        if hasattr(self.subscription_client, "session"):
+            await self.subscription_client.close()
         await self.subscription_client.connect_async()
+
         self.subscription_task = asyncio.create_task(self.live_subscription(self.subscription_client))
         return self.subscription_task
 
-    def void_subscription(self):
-        if self.subscription_client is not None:
-            self.subscription_client.close_sync()
-            self.subscription_client = None
+    async def void_subscription(self):
         self.subscription_start = None
         self.subscription_task = None
         self.last_live_measurement_update = None
@@ -403,6 +404,7 @@ async def subscriptions():
             logging.error(f'Subscription connection error ({str(e)})')
         except (websockets.exceptions.ConnectionClosedError) as e:
             logging.info(f'Subscription connection closed ({str(e)})')
+            await rt.void_subscription()
 
         for rt in RT_HOMES.values():
             if rt.subscription_task is not None:
@@ -415,7 +417,7 @@ async def subscriptions():
 
             if rt.is_subscribed() and rt.subscription_task.done():
                 logging.info(f'Voiding subscription for {rt.id}')
-                rt.void_subscription()
+                await rt.void_subscription()
 
         # If we power through the loop in a short time, backoff and wait before we reconnect
         # to play nice
