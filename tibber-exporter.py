@@ -13,13 +13,15 @@ import threading
 import time
 import urllib3
 import websockets
+import gql.transport.exceptions as exceptions
 from datetime import datetime, timedelta
-from python_graphql_client import GraphqlClient
+from gql import gql, Client
+from gql.transport.aiohttp import AIOHTTPTransport
+from gql.transport.websockets import WebsocketsTransport
 from prometheus_client import start_http_server, Gauge
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 
 PORT = 9110
-SUBSCRIPTION_ENDPOINT = 'wss://api.tibber.com/v1-beta/gql/subscriptions'
 QUERY_ENDPOINT = 'https://api.tibber.com/v1-beta/gql'
 RT_HOMES = {}
 
@@ -36,57 +38,63 @@ PRICE_CACHE_TTL_SECONDS=90
 PRICE_CACHE_REFRESH_SECONDS=30
 
 class TibberHomeRT(object):
-    def __init__(self, token, id):
+    def __init__(self, token, id, websocketsubscriptionurl):
         self.id = id
         self.token = token
         self.last_live_measurement = None
         self.last_live_measurement_update = None
-        self.subscription_client = GraphqlClient(endpoint=SUBSCRIPTION_ENDPOINT)
+        self.subscription_client_transport = WebsocketsTransport(
+            url=websocketsubscriptionurl,
+            headers = { 'Authorization': 'Bearer ' + self.token })
         self.subscription_task = None
         self.subscription_start = None
+        self.subscription_client = None
         self.connect_count = 0
 
-    def handle_live_measurement(self, data):
-        logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
-        try:
-            self.last_live_measurement = data['data']['liveMeasurement'].copy()
-            self.last_live_measurement_update = datetime.now()
-        except (KeyError, TypeError) as e:
-            logging.warning('Failed to parse live measurement update: {err}'.format(err=str(e)))
-
-    def subscribe_live_measurements(self):
-        logging.info('Starting subscription for homeId {homeid}'.format(homeid=self.id))
-        query = """
-        subscription {{
-            liveMeasurement(homeId:"{homeid}") {{
-                timestamp
-                power
-                powerFactor
-                powerReactive
-                averagePower
-                lastMeterConsumption
-                accumulatedConsumption
-                accumulatedCost
-                currency
-                currentL1
-                currentL2
-                currentL3
-                voltagePhase1
-                voltagePhase2
-                voltagePhase3
-                signalStrength
+    async def live_subscription(self, client):
+        query = gql("""subscription {{
+                liveMeasurement(homeId:"{homeid}") {{
+                    timestamp
+                    power
+                    powerFactor
+                    powerReactive
+                    averagePower
+                    lastMeterConsumption
+                    accumulatedConsumption
+                    accumulatedCost
+                    currency
+                    currentL1
+                    currentL2
+                    currentL3
+                    voltagePhase1
+                    voltagePhase2
+                    voltagePhase3
+                    signalStrength
+                }}
             }}
-        }}
-        """.format(homeid=self.id)
-        self.subscription_task = asyncio.create_task(self.subscription_client.subscribe(query=query,
-            handle=self.handle_live_measurement,
-            init_payload={'token': self.token}))
+        """.format(homeid=self.id))
+        async for data in client.subscribe(document=query):
+            logging.info('Got live measurement update for homeId {homeid}'.format(homeid=self.id))
+            try:
+                self.last_live_measurement = data['liveMeasurement'].copy()
+                self.last_live_measurement_update = datetime.now()
+            except (KeyError, TypeError) as e:
+                logging.warning('Failed to parse live measurement update: {err}'.format(err=str(e)))
+
+    async def subscribe_live_measurements(self):
+        logging.info('Starting subscription for homeId {homeid}'.format(homeid=self.id))
         self.subscription_start = datetime.now()
         self.connect_count += 1
 
+        self.subscription_client = Client(transport=self.subscription_client_transport)
+        await self.subscription_client.connect_async()
+        self.subscription_task = asyncio.create_task(self.live_subscription(self.subscription_client))
         return self.subscription_task
 
     def void_subscription(self):
+        if self.subscription_client is not None:
+            self.subscription_client.close_sync()
+            self.subscription_client = None
         self.subscription_start = None
         self.subscription_task = None
         self.last_live_measurement_update = None
@@ -133,11 +141,12 @@ class TibberHomeRT(object):
         return False
 
 class TibberHome(object):
-    def __init__(self, token, data):
+    def __init__(self, token, data, websocketsubscriptionurl):
         self.id = data['id']
         self.token = token
         self.app_nickname = data.get('appNickname')
         self.features = data.get('features')
+        self.websocketsubscriptionurl = websocketsubscriptionurl
         self.realtime_consumption_enabled = False
         if self.features is not None:
             self.realtime_consumption_enabled = self.features.get('realTimeConsumptionEnabled')
@@ -146,7 +155,9 @@ class TibberHome(object):
         self.subscription_rt = None
         
         headers = { 'Authorization': 'Bearer ' + self.token }
-        self.query_client = GraphqlClient(endpoint=QUERY_ENDPOINT, headers=headers, timeout=3.0)
+        transport = AIOHTTPTransport(url=QUERY_ENDPOINT,
+                    headers=headers)
+        self.query_client = Client(transport=transport)
 
     def get_name(self):
         if self.app_nickname is not None:
@@ -167,7 +178,8 @@ class TibberHome(object):
         if not self.realtime_consumption_enabled:
             return
 
-        self.subscription_rt = TibberHomeRT(self.token, self.id)
+        logging.debug('Setting up real time subscription at {url}'.format(url=self.websocketsubscriptionurl))
+        self.subscription_rt = TibberHomeRT(self.token, self.id, self.websocketsubscriptionurl)
         RT_HOMES[self.id] = self.subscription_rt
 
     def get_cached_price(self):
@@ -181,7 +193,7 @@ class TibberHome(object):
             datetime.now() - self.last_price_update > timedelta(seconds=PRICE_CACHE_REFRESH_SECONDS):
             self.last_price_update = datetime.now()
             logging.info('Fetching current priceinfo for homeId {homeid}'.format(homeid=self.id))
-            data = self.query_client.execute(query="""
+            data = self.query_client.execute(document=gql("""
             {{
                 viewer {{
                     home(id: "{homeid}") {{
@@ -200,10 +212,10 @@ class TibberHome(object):
                     }}
                 }}
             }}
-            """.format(homeid=self.id))
+            """.format(homeid=self.id)))
             try:
-                if data['data']['viewer']['home']['currentSubscription'] is not None:
-                    self.last_price = data['data']['viewer']['home']['currentSubscription']['priceInfo']['current']
+                if data['viewer']['home']['currentSubscription'] is not None:
+                    self.last_price = data['viewer']['home']['currentSubscription']['priceInfo']['current']
             except TypeError as e:
                 logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
 
@@ -217,8 +229,9 @@ class TibberCollector(object):
         self.checkconfig()
 
         headers = { 'Authorization': 'Bearer ' + self.token }
-        self.query_client = GraphqlClient(endpoint=QUERY_ENDPOINT, headers=headers)
-
+        transport = AIOHTTPTransport(url=QUERY_ENDPOINT,
+                    headers=headers)
+        self.query_client = Client(transport=transport)
         self.homes = {}
 
     def checkconfig(self):
@@ -228,12 +241,12 @@ class TibberCollector(object):
     def setup_subscriptions(self):
         homes = []
         try:
-            homes = self.get_homes()
+            homes, websocketsubscriptionurl = self.get_homes()
         except requests.exceptions.HTTPError as e:
             logging.error('Failed to query homes: {err}'.format(err=str(e)))
 
         for home in homes:
-            tibberhome = TibberHome(self.token, home)
+            tibberhome = TibberHome(self.token, home, websocketsubscriptionurl)
             self.homes[tibberhome.id] = tibberhome
             tibberhome.create_live_subscription_handlers()
 
@@ -342,7 +355,7 @@ class TibberCollector(object):
 
 
     def get_homes(self):
-        data = self.query_client.execute(query="""
+        data = self.query_client.execute(document=gql("""
         {
             viewer {
                 homes {
@@ -352,11 +365,12 @@ class TibberCollector(object):
                         realTimeConsumptionEnabled
                     }
                 }
+                websocketSubscriptionUrl
             }
         }
-        """)
+        """))
         try:
-            return data['data']['viewer']['homes']
+            return data['viewer']['homes'], data['viewer']['websocketSubscriptionUrl']
         except TypeError as e:
             logging.warning('Failed to get price from response {response}: {err}'.format(response=data, err=str(e)))
 
@@ -382,10 +396,23 @@ async def subscriptions():
             await asyncio.gather(*tasks)
         except (asyncio.CancelledError, TimeoutError) as e:
             logging.warning('Async operation cancelled ({err}) restarting operations'.format(err=str(e)))
-        except (websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidStatusCode, websockets.exceptions.InvalidMessage) as e:
+        except (exceptions.TransportError,
+                exceptions.TransportClosed,
+                exceptions.TransportQueryError) as e:
+
             logging.error('Subscription connection error ({err})'.format(err=str(e)))
+        except (websockets.exceptions.ConnectionClosedError) as e:
+            logging.info('Subscription connection closed ({err})'.format(err=str(e)))
 
         for rt in RT_HOMES.values():
+            if rt.subscription_task is not None:
+                try:
+                    exception = rt.subscription_task.exception()
+                    if exception is not None:
+                        raise exception
+                except Exception as e:
+                    logging.error('Subscription task exception ({err})'.format(err=str(e)))
+
             if rt.is_subscribed() and rt.subscription_task.done():
                 logging.info("Voiding subscription for {homeid}".format(homeid=rt.id))
                 rt.void_subscription()
