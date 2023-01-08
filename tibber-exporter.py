@@ -51,7 +51,7 @@ class TibberHomeRT(object):
         self.subscription_start = None
         self.connect_count = 0
 
-    async def live_subscription(self, client):
+    async def live_subscription(self, session):
         query = gql(f"""subscription {{
                 liveMeasurement(homeId:"{self.id}") {{
                     timestamp
@@ -73,9 +73,10 @@ class TibberHomeRT(object):
                 }}
             }}
         """)
-        async for data in client.subscribe(document=query):
+        async for data in session.subscribe(document=query):
             logging.info(f'Got live measurement update for homeId {self.id}')
             try:
+                pprint.pprint(data)
                 self.last_live_measurement = data['liveMeasurement'].copy()
                 self.last_live_measurement_update = datetime.now()
             except (KeyError, TypeError) as e:
@@ -83,13 +84,18 @@ class TibberHomeRT(object):
 
     async def subscribe_live_measurements(self):
         logging.info(f'Starting subscription for homeId {self.id}')
-        await self.void_subscription()
+        self.void_subscription()
+        if self.subscription_client_transport.websocket is not None:
+            self.subscription_client_transport.close()
+        if hasattr(self.subscription_client, "session"):
+            await self.subscription_client.close_async()
+
         self.subscription_start = datetime.now()
         self.connect_count += 1
 
-        await self.subscription_client.connect_async()
+        session = await self.subscription_client.connect_async()
 
-        self.subscription_task = asyncio.create_task(self.live_subscription(self.subscription_client))
+        self.subscription_task = asyncio.create_task(self.live_subscription(session))
         def _task_done(future):
             logging.debug(f'Task done callback, voiding subscription homeId {self.id}')
             self.void_subscription()
@@ -97,11 +103,7 @@ class TibberHomeRT(object):
         self.subscription_task.add_done_callback(_task_done)
         return self.subscription_task
 
-    async def void_subscription(self):
-        if self.subscription_client_transport.websocket is not None:
-            await self.subscription_client_transport.close()
-        if hasattr(self.subscription_client, "session"):
-            await self.subscription_client.close()
+    def void_subscription(self):
 
         self.subscription_start = None
         self.subscription_task = None
@@ -123,7 +125,7 @@ class TibberHomeRT(object):
                 logging.info(f'Task {self.id} done.')
                 self.void_subscription()
             else:
-                logging.warning(f'Flagging for exit for task {self.id}')
+                logging.warning(f'Flagging for exit for subscription task for home {self.id}')
                 self.subscription_task.cancel()
 
     def get_last_live_measurement(self):
@@ -413,18 +415,10 @@ async def subscriptions():
             logging.info(f'Subscription connection closed ({str(e)})')
 
         for rt in RT_HOMES.values():
-            if rt.subscription_task is not None:
-                try:
-                    exception = rt.subscription_task.exception()
-                    if exception is not None:
-                        raise exception
-                except Exception as e:
-                    logging.error(f'Subscription task exception ({str(e)})')
-                    rt.request_subscription_stop()
 
             if rt.is_subscribed() and rt.subscription_task.done():
                 logging.info(f'Voiding subscription for {rt.id}')
-                await rt.void_subscription()
+                rt.void_subscription()
 
         # If we power through the loop in a short time, backoff and wait before we reconnect
         # to play nice
