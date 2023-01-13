@@ -1,4 +1,6 @@
 asyncio
 requests==2.28.1
-python-graphql-client>=0.4.1
+# Temporary fix:
+# revert to once merged: python-graphql-client>=0.4.1
+git+https://github.com/jenskdsgn/python-graphql-client@master#python-graphql-client
 prometheus_client
