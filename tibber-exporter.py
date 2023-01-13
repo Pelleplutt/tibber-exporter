@@ -19,7 +19,7 @@ from prometheus_client import start_http_server, Gauge
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 
 PORT = 9110
-SUBSCRIPTION_ENDPOINT = 'wss://api.tibber.com/v1-beta/gql/subscriptions'
+SUBSCRIPTION_ENDPOINT = 'wss://websocket-api.tibber.com/v1-beta/gql/subscriptions'
 QUERY_ENDPOINT = 'https://api.tibber.com/v1-beta/gql'
 RT_HOMES = {}
 
@@ -80,7 +80,8 @@ class TibberHomeRT(object):
         """.format(homeid=self.id)
         self.subscription_task = asyncio.create_task(self.subscription_client.subscribe(query=query,
             handle=self.handle_live_measurement,
-            init_payload={'token': self.token}))
+            init_payload={'token': self.token},
+            ws_subprotocol='graphql-transport-ws'))
         self.subscription_start = datetime.now()
         self.connect_count += 1
 
