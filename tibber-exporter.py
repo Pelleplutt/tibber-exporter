@@ -45,7 +45,10 @@ class TibberHomeRT(object):
         self.last_live_measurement_update = None
         self.subscription_client_transport = WebsocketsTransport(
             url=websocketsubscriptionurl,
-            headers = { 'Authorization': 'Bearer ' + self.token })
+            headers = {
+                'Authorization': 'Bearer ' + self.token,
+                'User-Agent': 'tibber-exporter/0.2 com.tibber/1.8.3',
+                })
         self.subscription_client = Client(transport=self.subscription_client_transport)
         self.subscription_task = None
         self.subscription_start = None
