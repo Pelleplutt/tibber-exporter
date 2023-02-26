@@ -1,4 +1,4 @@
 asyncio
-requests==2.28.1
+requests==2.28.2
 python-graphql-client>=0.4.1
 prometheus_client
