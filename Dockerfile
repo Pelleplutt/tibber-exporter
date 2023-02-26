@@ -10,4 +10,6 @@ COPY tibber-exporter.py /app/
 
 EXPOSE 9109
 
+USER prometheus
+
 CMD ["/usr/local/bin/python",  "/app/tibber-exporter.py"]
